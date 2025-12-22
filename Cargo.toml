@@ -1,0 +1,11 @@
+[package]
+name = "subwin"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.17.0"
+num-traits = "0.2.19"
+ringbuf-blocking = "0.1.0-rc.5"
+rubato = "0.16.2"
+thiserror = "2.0.17"
