@@ -1,14 +1,16 @@
 pub mod audio;
 pub mod math;
+pub mod speech;
 
 use cpal::traits::StreamTrait;
+use log::{error, info};
 use ringbuf_blocking::traits::{Consumer, Producer, Split};
 use std::{io::Write, sync::mpsc, thread};
+use whisper_rs::{FullParams, WhisperContextParameters};
 
-use crate::audio::resampler::AudioResampler;
+use crate::{audio::resampler::AudioResampler, speech::Transcoder};
 
 const TARGET_SAMPLE_RATE: u32 = 16_000; // 16 kHz
-const TARGET_RECORDING_DURATION: u32 = 3; // 3 seconds for testing
 
 fn prompt_select_capture_device(host: &cpal::Host) -> audio::device::HostInputDevice {
     let devices =
@@ -32,12 +34,18 @@ fn prompt_select_capture_device(host: &cpal::Host) -> audio::device::HostInputDe
         - 1;
 
     match devices.get(capture_device_index) {
-        Some(device) => device.clone(), // FIXME: try to remove this `clone`
+        Some(device) => device.clone(),
         None => panic!("no device found at index {}", capture_device_index + 1),
     }
 }
 
 fn main() {
+    simple_logger::SimpleLogger::new()
+        .with_level(log::LevelFilter::Info)
+        .without_timestamps()
+        .init()
+        .expect("failed to create logger instance");
+
     let capture_device = prompt_select_capture_device(&cpal::default_host());
     println!("[INFO] Using capture device: {capture_device}");
 
@@ -63,41 +71,65 @@ fn main() {
 
     let (worker_sender, worker_receiver) = mpsc::channel::<usize>();
     let ring_buffer =
-        ringbuf_blocking::BlockingHeapRb::<f32>::new((target_buffer_size * 30) as usize);
+        ringbuf_blocking::BlockingHeapRb::<f32>::new((TARGET_SAMPLE_RATE * 30) as usize);
     let (mut producer, mut consumer) = ring_buffer.split();
 
     thread::spawn(move || {
-        let window_samples = TARGET_SAMPLE_RATE * TARGET_RECORDING_DURATION;
-        let mut samples_accumulator = Vec::<f32>::with_capacity(window_samples as usize);
+        let mut context_params = WhisperContextParameters::default();
+        context_params.use_gpu(true);
+        let mut transcoder = crate::speech::whisper::WhisperTranscoder::new(
+            TARGET_SAMPLE_RATE,
+            "./ggml-small-q5_1.bin",
+            context_params,
+        )
+        .expect("failed to create transcoder");
 
+        let mut params = FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_special(false);
+        params.set_print_timestamps(false);
+        params.set_debug_mode(false);
+        params.set_n_threads(num_cpus::get_physical() as i32);
+        params.set_max_tokens(64);
+        params.set_single_segment(true);
+        params.set_language(Some("en"));
+
+        let mut samples_buffer = vec![0.0f32; target_buffer_size as usize];
         loop {
-            let written_length = worker_receiver
-                .recv()
-                .expect("failed to get written data as a receiver");
-            let mut written_buffer = vec![0.0f32; written_length];
+            let expected = worker_receiver.recv().unwrap();
+            let got = consumer.pop_slice(&mut samples_buffer[..expected]);
+            transcoder.accept_samples(&samples_buffer[..got]);
 
-            consumer.pop_slice(&mut written_buffer);
-            samples_accumulator.extend_from_slice(&written_buffer);
+            match transcoder.try_transcode(params.clone()) {
+                Some(value) => info!("Transcoding finished: {value}"),
+                None => info!("Got nothing as transcode result."),
+            };
 
-            // wait till we get the required amount of data to process
-            if samples_accumulator.len() < window_samples as usize {
-                continue;
-            }
-
-            // TODO: if data is enough, then start the transcription
-            samples_accumulator.clear();
+            // Finalize chunk (optional)
+            // if segment_window.len() >= length_samples {
+            //     if keep_samples > 0 && segment_window.len() > keep_samples {
+            //         segment_window.drain(..segment_window.len() - keep_samples);
+            //     } else {
+            //         segment_window.clear();
+            //     }
+            // }
         }
     });
 
     let mut samples_accumulator = Vec::new();
-    let mut resampled_callback = move |written: &[f32]| {
-        worker_sender.send(written.len()).unwrap();
-        producer.push_slice(written);
+    let mut resampled_callback = move |written_data: &[f32]| {
+        // worker_sender.send(written.len()).unwrap();
+        // producer.push_slice(written);
+        let written = producer.push_slice(written_data); // may be < written_data.len()
+        if written > 0 {
+            worker_sender.send(written).unwrap();
+        }
     };
 
     let handle_samples_data = move |samples_frame_data: &[f32]| {
         if samples_frame_data.len() != (target_buffer_size as usize * channels as usize) {
-            eprintln!(
+            error!(
                 "CPAL delivered unexpected buffer of {} samples",
                 samples_frame_data.len()
             );
@@ -109,14 +141,14 @@ fn main() {
 
         match resampler.process_callback(&samples_accumulator[..frames], &mut resampled_callback) {
             Ok(_) => {}
-            Err(e) => eprintln!(
+            Err(e) => error!(
                 "resampler error: {e:?}, frames={}, buffer_size={}",
                 frames, target_buffer_size
             ),
         }
     };
 
-    let handle_error = move |error| eprintln!("Error: {error}");
+    let handle_error = move |error| error!("Error: {error}");
     let capture_device_stream = audio::device::open_cpal_input_stream(
         &capture_device,
         TARGET_SAMPLE_RATE,

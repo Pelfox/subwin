@@ -5,7 +5,11 @@ edition = "2024"
 
 [dependencies]
 cpal = "0.17.0"
+log = "0.4.29"
 num-traits = "0.2.19"
+num_cpus = "1.17.0"
 ringbuf-blocking = "0.1.0-rc.5"
 rubato = "0.16.2"
+simple_logger = "5.1.0"
 thiserror = "2.0.17"
+whisper-rs = { version = "0.15.1", features = ["log_backend", "metal"] }
