@@ -69,9 +69,8 @@ fn main() {
     )
     .expect("failed to create FixedBlockResampler");
 
-    let (worker_sender, worker_receiver) = mpsc::channel::<usize>();
     let ring_buffer =
-        ringbuf_blocking::BlockingHeapRb::<f32>::new((TARGET_SAMPLE_RATE * 30) as usize);
+        ringbuf_blocking::BlockingHeapRb::<f32>::new((TARGET_SAMPLE_RATE * 3) as usize);
     let (mut producer, mut consumer) = ring_buffer.split();
 
     thread::spawn(move || {
@@ -91,19 +90,24 @@ fn main() {
         params.set_print_timestamps(false);
         params.set_debug_mode(false);
         params.set_n_threads(num_cpus::get_physical() as i32);
-        params.set_max_tokens(64);
-        params.set_single_segment(true);
+
         params.set_language(Some("en"));
+        // params.set_single_segment(false);
+        // params.set_split_on_word(true);
+        // params.set_max_tokens(32);
+        // params.set_no_timestamps(false);
+        // params.set_no_context(true);
 
         let mut samples_buffer = vec![0.0f32; target_buffer_size as usize];
         loop {
-            let expected = worker_receiver.recv().unwrap();
-            let got = consumer.pop_slice(&mut samples_buffer[..expected]);
-            transcoder.accept_samples(&samples_buffer[..got]);
+            let len = consumer.pop_slice(&mut samples_buffer);
+            if len == 0 {
+                continue;
+            }
 
-            match transcoder.try_transcode(params.clone()) {
-                Some(value) => info!("Transcoding finished: {value}"),
-                None => info!("Got nothing as transcode result."),
+            transcoder.accept_samples(&samples_buffer[..len]);
+            if let Some(value) = transcoder.try_transcode(params.clone()) {
+                info!("Transcoding finished: {value}")
             };
 
             // Finalize chunk (optional)
@@ -119,12 +123,7 @@ fn main() {
 
     let mut samples_accumulator = Vec::new();
     let mut resampled_callback = move |written_data: &[f32]| {
-        // worker_sender.send(written.len()).unwrap();
-        // producer.push_slice(written);
-        let written = producer.push_slice(written_data); // may be < written_data.len()
-        if written > 0 {
-            worker_sender.send(written).unwrap();
-        }
+        producer.push_slice(written_data);
     };
 
     let handle_samples_data = move |samples_frame_data: &[f32]| {

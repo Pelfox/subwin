@@ -1,7 +1,7 @@
 pub mod whisper;
 
 pub const CONTEXT_LENGTH_MILLISECONDS: u32 = 3000; // the size of context in milliseconds 
-pub const REPEAT_RUN_MILLISECONDS: u32 = 250; // how often to run the transcoding
+pub const REPEAT_RUN_MILLISECONDS: u32 = 500; // how often to run the transcoding
 
 pub(crate) fn milliseconds_to_samples(milliseconds: u32, sample_rate: u32) -> usize {
     ((sample_rate * milliseconds) / 1000) as usize
