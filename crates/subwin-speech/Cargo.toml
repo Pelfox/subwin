@@ -1,0 +1,8 @@
+[package]
+name = "subwin-speech"
+version = "0.1.0"
+edition = "2024"
+description = "Real-time transcription scheduling primitives and STT processing implementations."
+
+[dependencies]
+whisper-rs = { version = "0.15.1", features = ["metal"] }

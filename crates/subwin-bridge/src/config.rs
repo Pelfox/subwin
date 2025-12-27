@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Controls the appearance of the background behind captions/subtitles window.
+/// Controls the appearance of the background behind captions window.
 /// This enum determines how the area behind the caption text is rendered.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -17,7 +17,7 @@ pub enum CaptionsBackgroundAppearance {
     Blurred,
 }
 
-/// Configuration for the display and styling of captions/subtitles. This
+/// Configuration for the display and styling of captions. This
 /// struct controls key visual aspects of how captions are rendered on screen.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CaptionsConfig {

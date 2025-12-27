@@ -119,9 +119,9 @@ pub fn list_host_input_devices(host: &cpal::Host) -> Result<Vec<HostInputDevice>
 ///
 /// Both `callback` and `error_callback` are executed on a real-time audio thread.
 /// They must:
-/// - Be fast and non-blocking
-/// - Avoid memory allocation
-/// - Avoid locks and I/O
+/// - Be fast and non-blocking.
+/// - Avoid memory allocation.
+/// - Avoid locks and I/O.
 ///
 /// Blocking operations in callbacks may cause audio dropouts or undefined
 /// behavior.

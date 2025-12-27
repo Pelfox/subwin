@@ -1,6 +1,6 @@
 # subwin
 
-Captures system audio and transcribes speech into live subtitles/captions using OpenAI's Whisper. This project is Work-In-Progress (WIP).
+Captures system audio and transcribes speech into live captions using OpenAI's Whisper. This project is Work-In-Progress (WIP).
 
 ## Features
 

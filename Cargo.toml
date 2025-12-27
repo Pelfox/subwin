@@ -9,4 +9,4 @@ subwin-backend = { path = "crates/subwin-backend" }
 subwin-bridge = { path = "crates/subwin-bridge" }
 
 [workspace]
-members = ["crates/subwin-frontend", "crates/subwin-backend", "crates/subwin-bridge", "crates/subwin-audio"]
+members = ["crates/subwin-frontend", "crates/subwin-backend", "crates/subwin-bridge", "crates/subwin-audio", "crates/subwin-speech"]
