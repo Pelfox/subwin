@@ -1,0 +1,10 @@
+[package]
+name = "subwin-bridge"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Communication bridge between frontend and backend."
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.48.0", default-features = false }

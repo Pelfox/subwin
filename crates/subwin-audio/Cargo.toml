@@ -1,0 +1,12 @@
+[package]
+name = "subwin-audio"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Audio utilities for input devices, mixing, and resampling."
+
+[dependencies]
+cpal = "0.17.0"
+num-traits = "0.2.19"
+rubato = "0.16.2"
+thiserror = "2.0.17"

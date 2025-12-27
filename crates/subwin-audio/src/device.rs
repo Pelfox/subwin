@@ -1,5 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait};
 
+// TODO: add functions to get host by its ID, as well as audio device by its ID.
+
 /// Errors that can occur while configuring or creating an audio input device.
 ///
 /// This error type represents failures that may occur during input stream
@@ -70,8 +72,8 @@ impl HostInputDevice {
         // ratio, since rubato wants a buffer size that is denominated to the
         // target sample rate
         let original_sample_rate = default_input_config.sample_rate();
-        let rate_denominator = crate::math::gcd(original_sample_rate, target_rate);
-        Ok(crate::math::find_nearest_to(
+        let rate_denominator = crate::gcd(original_sample_rate, target_rate);
+        Ok(crate::find_nearest_to(
             device_buffer_size,
             original_sample_rate / rate_denominator,
         ))

@@ -18,7 +18,7 @@ where
         + std::ops::Mul<Output = T>,
 {
     let frames = samples_frame_data.len() / 2;
-    let half = T::from_f32(0.5).expect("failed to obtain a half");
+    let half = T::from_f32(0.5).expect("failed to obtain a half for the type");
     for i in 0..frames {
         let left_channel_sample = samples_frame_data[i * 2];
         let right_channel_sample = samples_frame_data[(i * 2) + 1];
