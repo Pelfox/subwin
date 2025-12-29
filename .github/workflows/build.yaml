@@ -36,6 +36,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
