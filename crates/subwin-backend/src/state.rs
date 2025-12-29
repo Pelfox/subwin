@@ -7,7 +7,6 @@
 /// It is designed to be wrapped in thread-safe, async-friendly concurrency
 /// primitives (see [`SharedState`]) to allow safe concurrent reads and
 /// occasional writes from multiple tasks.
-#[derive(Debug, Clone)]
 pub struct State {
     /// The loaded application configuration.
     pub config: subwin_bridge::config::Config,
@@ -15,6 +14,10 @@ pub struct State {
     pub cache_path: std::path::PathBuf,
     /// Shared HTTP client for making efficient, pooled requests.
     pub request_client: reqwest::Client,
+    /// Active CPAL audio host.
+    pub active_host: std::sync::Arc<cpal::Host>,
+    /// Active CPAL audio device.
+    pub active_audio_device: std::sync::Arc<Option<cpal::Device>>,
 }
 
 /// Thread-safe, async-friendly shared reference to the application [`State`].

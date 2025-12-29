@@ -14,6 +14,7 @@
 //! in [`BridgeChannels`], providing back-pressure, async compatibility, and
 //! clean separation of concerns.
 
+pub mod audio;
 pub mod config;
 pub mod notification;
 pub mod whisper_model;
@@ -41,6 +42,7 @@ pub enum MessageFromBackend {
         /// Estimated remaining time until download completion, in seconds.
         remaining_time: f64,
     },
+    AudioDevicesListResponse(Vec<audio::InputDevice>),
 }
 
 /// Commands issued by the frontend to control or query the backend.
@@ -52,6 +54,8 @@ pub enum MessageToBackend {
     ConfigurationRequest,
     /// Request to start downloading a model.
     DownloadModelRequest(whisper_model::WhisperModel),
+    AudioDevicesListRequest,
+    SelectAudioDevice(String),
 }
 
 /// Paired `tokio::mpsc` channels for bidirectional communication between

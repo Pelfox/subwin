@@ -44,6 +44,7 @@ pub async fn load_config() -> Result<(Config, PathBuf), ConfigError> {
     let (config_dir, cache_dir) = build_project_dirs()?;
 
     let config_path = config_dir.join("config.toml");
+    log::info!("Loading configuration from {config_path:?}");
     if config_path.exists() {
         let contents = read_to_string(config_path).await?;
         let config: Config = toml::from_str(&contents)?;

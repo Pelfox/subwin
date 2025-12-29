@@ -48,16 +48,12 @@ fn build_download_url(model: &WhisperModel) -> (&str, Url) {
 /// Handles an incoming model download request (see
 /// [`subwin_bridge::MessageToBackend::DownloadModelRequest`]).
 pub async fn handle_download_model_request(
-    context: &crate::AppContext,
+    context: super::AppContextHandle,
     model: subwin_bridge::whisper_model::WhisperModel,
 ) {
-    let (mut config, request_client, cache_path) = {
+    let (request_client, cache_path) = {
         let state = context.state.read().await;
-        (
-            state.config.clone(),
-            state.request_client.clone(),
-            state.cache_path.clone(),
-        )
+        (state.request_client.clone(), state.cache_path.clone())
     };
 
     let (model_file_name, model_download_url) = build_download_url(&model);
@@ -83,7 +79,6 @@ pub async fn handle_download_model_request(
         .build()
         .expect("failed to build model download request");
 
-    let context = context.clone();
     tokio::spawn(async move {
         match request_client.execute(request).await {
             Ok(response) => {
@@ -115,11 +110,17 @@ pub async fn handle_download_model_request(
                         .await;
                 }
 
-                // update config with new path
-                config.active_model_path = Some(save_path);
-                crate::config::save_config(&config)
-                    .await
-                    .expect("failed to update active model path");
+                // update config with new path and persist the authoritative config
+                {
+                    let mut state = context.state.write().await;
+                    state.config.active_model_path = Some(save_path);
+                    crate::config::save_config(&state.config)
+                        .await
+                        .expect("failed to update active model path");
+                }
+
+                // notify frontend about config changes
+                super::config_service::handle_config_request(context).await;
             }
             Err(e) => {
                 context

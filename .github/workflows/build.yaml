@@ -1,0 +1,89 @@
+name: "Build application and publish"
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: subwin
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            binary_ext: ".exe"
+
+          - os: macos-latest
+            platform: macos
+            binary_ext: ""
+
+          - os: ubuntu-latest
+            platform: linux
+            binary_ext: ""
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir dist
+          cp target/release/${APP_NAME}${{ matrix.binary_ext }} \
+             dist/${APP_NAME}-${{ matrix.platform }}${{ matrix.binary_ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Determine release type
+        id: release_type
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "tag=dev-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_type.outputs.tag }}
+          prerelease: ${{ steps.release_type.outputs.prerelease }}
+          files: artifacts/**/*

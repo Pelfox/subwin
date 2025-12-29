@@ -1,6 +1,11 @@
-use cpal::traits::{DeviceTrait, HostTrait};
+use std::str::FromStr;
 
-// TODO: add functions to get host by its ID, as well as audio device by its ID.
+use cpal::{
+    Device, Host,
+    traits::{DeviceTrait, HostTrait},
+};
+
+// TODO: add functions to get host by its ID.
 
 /// Errors that can occur while configuring or creating an audio input device.
 ///
@@ -23,6 +28,10 @@ pub enum DeviceError {
     /// audio backend fails to query the default input configuration.
     #[error("failed to build device config: {0}")]
     BuildStreamConfig(#[from] cpal::DefaultStreamConfigError),
+    /// Failed to parse the provided device ID. It may be incorrect or invalid.
+    /// You should refer to CPAL's error for more information.
+    #[error("failed to parse device id: {0}")]
+    ReadDeviceId(#[from] cpal::DeviceIdError),
 }
 
 /// Represents parsed input audio device belonging to a specific host.
@@ -33,7 +42,7 @@ pub struct HostInputDevice {
     /// Human-readable device description.
     pub description: String,
 
-    device: cpal::Device,
+    device: Device,
 }
 
 impl std::fmt::Display for HostInputDevice {
@@ -84,7 +93,7 @@ impl HostInputDevice {
 ///
 /// This function queries the provided [`cpal::Host`] for all input-capable audio
 /// devices and returns their identifiers and display names.
-pub fn list_host_input_devices(host: &cpal::Host) -> Result<Vec<HostInputDevice>, DeviceError> {
+pub fn list_host_input_devices(host: &Host) -> Result<Vec<HostInputDevice>, DeviceError> {
     Ok(host
         .input_devices()?
         .map(|device| HostInputDevice {
@@ -145,4 +154,14 @@ where
         error_callback,
         None,
     )?)
+}
+
+/// Retrieves a specific audio device by its unique identifier within a given
+/// host.
+///
+/// Attempts to look up an input or output device using a string
+/// representation of its [`cpal::DeviceId`].
+pub fn get_device_by_id(host: &Host, device_id: String) -> Result<Option<Device>, DeviceError> {
+    let device_id = cpal::DeviceId::from_str(&device_id)?;
+    Ok(host.device_by_id(&device_id))
 }
