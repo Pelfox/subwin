@@ -10,4 +10,4 @@ pub mod model_service;
 pub mod transcription_service;
 
 /// Represents a type that is used in all handlers as an application context.
-pub(crate) type AppContextHandle = std::sync::Arc<crate::AppContext>;
+pub(crate) type AppContextHandle = std::sync::Arc<crate::app::AppContext>;

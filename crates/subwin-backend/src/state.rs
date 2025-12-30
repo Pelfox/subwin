@@ -18,7 +18,7 @@ pub struct State {
     pub active_host: std::sync::Arc<cpal::Host>,
     /// Active CPAL audio device.
     pub active_audio_device: std::sync::Arc<Option<cpal::Device>>,
-
+    /// Active audio stream that keeps capture alive while transcription runs.
     pub active_stream: Option<cpal::Stream>,
 }
 

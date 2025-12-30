@@ -26,6 +26,7 @@ pub async fn handle_audio_devices_list_request(context: super::AppContextHandle)
         .await;
 }
 
+/// Handles an audio device selection request and persists it to config.
 pub async fn handle_audio_device_selection(context: super::AppContextHandle, id: String) {
     let active_host = {
         let state = context.state.read().await;
@@ -40,6 +41,7 @@ pub async fn handle_audio_device_selection(context: super::AppContextHandle, id:
             let mut state = context.state.write().await;
             state.active_audio_device = std::sync::Arc::new(Some(device));
             state.config.audio_device_config.selected_device_id = Some(id);
+            // persist the updated selection so it is remembered across runs
             crate::config::save_config(&state.config)
                 .await
                 .expect("failed to update selected device id");

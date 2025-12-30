@@ -5,6 +5,8 @@ use reqwest::Url;
 use subwin_bridge::whisper_model::WhisperModel;
 use tokio::io::AsyncWriteExt;
 
+/// Base path for the HuggingFace that will trigger a download for a Whisper
+/// model.
 const BASE_DOWNLOAD_PATH: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
 
 /// Builds the download URL for the given Whisper model.
@@ -60,6 +62,7 @@ pub async fn handle_download_model_request(
     let save_path = cache_path.join(model_file_name);
     log::info!("Downloading model {model:?} from {model_download_url}, saving to {save_path:?}");
 
+    // ensure the cache directory exists before creating the model file
     if let Some(parent) = save_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
