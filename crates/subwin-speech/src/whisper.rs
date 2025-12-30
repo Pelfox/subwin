@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use whisper_rs::{
     FullParams, WhisperContext, WhisperContextParameters, WhisperError, WhisperState,
 };
 
-use crate::{Transcriber, milliseconds_to_samples};
+use crate::{CaptionSegment, Transcriber, milliseconds_to_samples};
 
 /// Real-time Whisper-based audio transcriber.
 ///
@@ -19,14 +19,14 @@ pub struct WhisperTranscriber {
     segment_window: VecDeque<f32>,
     /// Internal Whisper inference state.
     whisper_state: WhisperState,
-    /// End timestamp (centiseconds) of the last emitted segment.
-    last_end_cs: i64,
     /// Target rolling window length, in samples.
     length_samples: usize,
     /// Decode scheduling interval, in samples.
     repeat_run_samples: usize,
     /// Minimum number of samples required for a decode attempt.
     min_transcode_samples: usize,
+    target_rate: u32,
+    total_samples_seen: i64,
 }
 
 impl WhisperTranscriber {
@@ -43,23 +43,51 @@ impl WhisperTranscriber {
 
         let transcoder_context = WhisperContext::new_with_params(path, context_params)?;
         let whisper_state = transcoder_context.create_state()?;
+        whisper_rs::install_logging_hooks();
 
         Ok(Self {
+            total_samples_seen: 0,
+            target_rate,
             since_last_decode: 0,
             segment_window: VecDeque::with_capacity(length_samples),
             scratch_buffer: Vec::with_capacity(min_transcode_samples),
             whisper_state,
-            last_end_cs: 0,
             length_samples,
             repeat_run_samples,
             min_transcode_samples,
         })
     }
+
+    pub fn build_context_params() -> WhisperContextParameters<'static> {
+        let mut context_params = WhisperContextParameters::default();
+        context_params.use_gpu(true);
+        context_params
+    }
+
+    pub fn build_request_params() -> FullParams<'static, 'static> {
+        let mut params = FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        // disable some not usable shit
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_special(false);
+        params.set_print_timestamps(false);
+        params.set_debug_mode(false);
+
+        // model and runtime optimizations
+        // TODO: re-enable this: params.set_n_threads(num_cpus::get_physical() as i32);
+        params.set_no_timestamps(false);
+        params.set_token_timestamps(false);
+        params.set_single_segment(false);
+        // params.set_max_tokens(96);
+        params.set_language(None); // TODO: request from end-calling user
+
+        params
+    }
 }
 
 impl Transcriber<FullParams<'static, 'static>> for WhisperTranscriber {
     fn min_transcription_samples(sample_rate: u32) -> usize {
-        (sample_rate as usize * 12) / 10 // ~1.2s
+        (sample_rate as usize) / 10 // expect minimum a second of submitted audio
     }
 
     fn accept_samples(&mut self, samples: &[f32]) {
@@ -70,15 +98,20 @@ impl Transcriber<FullParams<'static, 'static>> for WhisperTranscriber {
             let drop = self.segment_window.len() - self.length_samples;
             self.segment_window.drain(..drop);
         }
+
+        self.total_samples_seen += samples.len() as i64;
     }
 
-    fn try_transcribe(&mut self, params: FullParams<'static, 'static>) -> Option<String> {
+    fn try_transcribe(
+        &mut self,
+        mut params: FullParams<'static, 'static>,
+    ) -> (Vec<CaptionSegment>, u128) {
         // fail fast, if there's not enough data to process yet
         if self.since_last_decode < self.repeat_run_samples {
-            return None;
+            return (Vec::new(), 0);
         }
 
-        // TODO: check if last ~100-150ms are silent via RMS
+        let start = Instant::now();
 
         // get transcode audio, if there's more enough data for transcode.
         // otherwise, pad with zero-value for the provided type
@@ -92,33 +125,45 @@ impl Transcriber<FullParams<'static, 'static>> for WhisperTranscriber {
             &self.scratch_buffer
         };
 
+        // TODO: make the threshold configurable.
+        let rms = super::calculate_samples_rms(transcode_audio);
+        if rms == 0.0 || (20.0 * rms.log10()) <= -60.0 {
+            self.since_last_decode = 0;
+            return (Vec::new(), 0);
+        }
+
+        // reset the current model offset and remove unwanted junk
+        params.set_offset_ms(0);
+        params.set_suppress_nst(true);
+
+        let sample_rate = self.target_rate as i64;
+        let window_samples = transcode_audio.len() as i64;
+        let window_start_ms = (self.total_samples_seen - window_samples) * 1000 / sample_rate;
+
         if let Err(e) = self.whisper_state.full(params, transcode_audio) {
             eprintln!("Failed to transcode audio: {e}");
-            return None;
+            return (Vec::new(), 0);
         }
 
-        self.since_last_decode = 0;
-        let mut segment_string = String::new();
-        let mut new_last_end_cs = self.last_end_cs;
-
+        let mut segments = Vec::new();
         for segment in self.whisper_state.as_iter() {
-            let seg_end_cs = segment.end_timestamp();
-            if seg_end_cs <= self.last_end_cs {
-                continue; // a new block is already emitted
+            let text = segment.to_str_lossy().unwrap_or_default();
+            if text.trim().is_empty() {
+                continue;
             }
 
-            if let Ok(text) = segment.to_str()
-                && !text.trim().is_empty()
-            {
-                segment_string.push_str(text);
-                segment_string.push(' ');
-            }
-            new_last_end_cs = seg_end_cs;
+            let start_milliseconds = window_start_ms + (segment.start_timestamp() * 10);
+            let end_milliseconds = window_start_ms + (segment.end_timestamp() * 10);
+            segments.push(CaptionSegment {
+                start_milliseconds,
+                end_milliseconds,
+                text: text.to_string(),
+            });
         }
 
-        self.last_end_cs = new_last_end_cs;
-        let output = segment_string.trim().to_string();
+        let duration = start.elapsed().as_millis();
+        self.since_last_decode = 0;
 
-        (!output.is_empty()).then_some(output)
+        (segments, duration)
     }
 }

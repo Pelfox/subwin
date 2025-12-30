@@ -6,6 +6,7 @@
 //! low-latency, incremental captioning by repeatedly processing recent audio
 //! context.
 
+pub mod stabilizer;
 pub mod whisper;
 
 /// Default context window length in milliseconds.
@@ -30,6 +31,13 @@ pub(crate) fn milliseconds_to_samples(milliseconds: u32, sample_rate: u32) -> us
     ((sample_rate as u64 * milliseconds as u64) / 1000) as usize
 }
 
+#[derive(Debug, Clone)]
+pub struct CaptionSegment {
+    pub start_milliseconds: i64,
+    pub end_milliseconds: i64,
+    pub text: String,
+}
+
 /// Trait for real-time audio transcribers that process mono `f32` samples and
 /// produce text captions.
 ///
@@ -49,10 +57,40 @@ pub trait Transcriber<P> {
     /// Call this method as frequently as new audio becomes available.
     fn accept_samples(&mut self, samples: &[f32]);
 
-    /// Attempts to perform transcription using the currently buffered audio.
+    /// Attempts to transcribe the current accumulated audio segment using the
+    /// underlying transcription logic.
     ///
-    /// Returns `Some(String)` containing new or updated caption text if
-    /// transcription was performed and produced output, or `None` if no new
-    /// text is available.
-    fn try_transcribe(&mut self, params: P) -> Option<String>;
+    /// This method is called each time a new sample data arrives, so
+    /// implementations should check and fail fast, if there aren't enough data
+    /// available.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    ///
+    /// * `Option<String>` - The concatenated transcribed text from the current
+    ///   audio segment, if any text was produced. Returns `None` if no speech
+    ///   was detected, no text was generated, or if processing failed.
+    /// * `u128` - The elapsed time for the transcription inference in
+    ///   milliseconds.
+    fn try_transcribe(&mut self, params: P) -> (Vec<CaptionSegment>, u128);
+}
+
+pub(crate) fn calculate_samples_rms<T>(samples_data: &[T]) -> f64
+where
+    T: Copy + std::ops::Mul<Output = T> + Into<f64>,
+{
+    if samples_data.is_empty() {
+        return 0.0;
+    }
+
+    let length = samples_data.len() as f64;
+    let sum_of_squares: f64 = samples_data
+        .iter()
+        .copied()
+        .map(Into::into)
+        .map(|value: f64| value * value)
+        .sum();
+
+    (sum_of_squares / length).sqrt()
 }

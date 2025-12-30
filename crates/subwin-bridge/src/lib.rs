@@ -43,6 +43,11 @@ pub enum MessageFromBackend {
         remaining_time: f64,
     },
     AudioDevicesListResponse(Vec<audio::InputDevice>),
+    TranscriptionStartedResponse,
+    TranscriptionStateUpdate {
+        time_taken: u128,
+        new_segment_text: String,
+    },
 }
 
 /// Commands issued by the frontend to control or query the backend.
@@ -56,6 +61,7 @@ pub enum MessageToBackend {
     DownloadModelRequest(whisper_model::WhisperModel),
     AudioDevicesListRequest,
     SelectAudioDevice(String),
+    StartTranscriptionRequest,
 }
 
 /// Paired `tokio::mpsc` channels for bidirectional communication between

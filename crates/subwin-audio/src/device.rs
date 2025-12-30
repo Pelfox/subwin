@@ -89,22 +89,25 @@ impl HostInputDevice {
     }
 }
 
-/// Returns a list of all input audio devices available on the given host.
-///
-/// This function queries the provided [`cpal::Host`] for all input-capable audio
-/// devices and returns their identifiers and display names.
-pub fn list_host_input_devices(host: &Host) -> Result<Vec<HostInputDevice>, DeviceError> {
-    Ok(host
-        .input_devices()?
-        .map(|device| HostInputDevice {
-            id: device.id().expect("failed to obtain device's id"),
+impl From<Device> for HostInputDevice {
+    fn from(device: Device) -> Self {
+        HostInputDevice {
+            id: device.id().expect("failed to parse device's id"),
             description: device
                 .description()
                 .expect("failed to obtain device's information")
                 .to_string(),
             device,
-        })
-        .collect())
+        }
+    }
+}
+
+/// Returns a list of all input audio devices available on the given host.
+///
+/// This function queries the provided [`cpal::Host`] for all input-capable audio
+/// devices and returns their identifiers and display names.
+pub fn list_host_input_devices(host: &Host) -> Result<Vec<HostInputDevice>, DeviceError> {
+    Ok(host.input_devices()?.map(HostInputDevice::from).collect())
 }
 
 /// Creates and returns an input audio stream for the given device using its

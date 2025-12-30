@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 subwin-bridge = { path = "../subwin-bridge" }
 subwin-audio = { path = "../subwin-audio" }
+subwin-speech = { path = "../subwin-speech" }
 
 tokio = { version = "1.48.0", default-features = false, features = ["rt-multi-thread"] }
 toml = "0.9.10"
@@ -16,3 +17,4 @@ reqwest = { version = "0.12.28", features = ["stream"] }
 futures-util = "0.3.31"
 log = "0.4.29"
 cpal = "0.17.0"
+ringbuf-blocking = "0.1.0-rc.6"

@@ -1,14 +1,19 @@
 use gpui::{
     AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Pixels, Point, Render,
-    SharedString, Styled, TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
+    SharedString, Styled, Window, WindowBounds, WindowOptions, div, px, size,
 };
 use gpui_component::{
-    Disableable, IconName, IndexPath, StyledExt,
+    Disableable, IndexPath, StyledExt,
     button::Button,
     select::{Select, SelectEvent, SelectItem, SelectState},
 };
+use subwin_bridge::config::CaptionsBackgroundAppearance;
 
-use crate::{BackendBridge, entities::DataEntities, views::captions_root_view};
+use crate::{
+    BackendBridge,
+    entities::{DataEntities, settings_entity::SettingsEntity},
+    views::captions_root_view::CaptionsRootView,
+};
 
 #[derive(Debug, Clone)]
 struct AudioDevice {
@@ -31,6 +36,8 @@ impl SelectItem for AudioDevice {
 pub struct OverviewPage {
     is_active: bool,
     active_audio_device: Entity<SelectState<Vec<AudioDevice>>>,
+    captions_window_view: Entity<CaptionsRootView>,
+    settings: Entity<SettingsEntity>,
 }
 
 impl OverviewPage {
@@ -119,12 +126,14 @@ impl OverviewPage {
         Self {
             is_active: false,
             active_audio_device,
+            captions_window_view: cx.new(|_| CaptionsRootView::new(data)),
+            settings: data.settings.clone(),
         }
     }
 }
 
 impl Render for OverviewPage {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -133,11 +142,29 @@ impl Render for OverviewPage {
             .child(Select::new(&self.active_audio_device).placeholder("Выберите источник звука..."))
             .child(
                 div().flex().gap_3().child(
-                    Button::new("start_transcription")
+                    Button::new("start_transcribing")
                         .disabled(self.is_active)
                         .label("Включить субтитры")
-                        .on_click(|_, window, cx| {
-                            let (window_width, window_height) = (px(800.0), px(80.0));
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            let captions_config = {
+                                let settings = this.settings.read(cx);
+                                settings.config.captions_config.clone()
+                            };
+                            let (window_width, window_height) = (
+                                px(captions_config.window_width),
+                                px(captions_config.window_height),
+                            );
+                            let window_background = match captions_config.background_appearance {
+                                CaptionsBackgroundAppearance::Opaque => {
+                                    gpui::WindowBackgroundAppearance::Opaque
+                                }
+                                CaptionsBackgroundAppearance::Transparent => {
+                                    gpui::WindowBackgroundAppearance::Transparent
+                                }
+                                CaptionsBackgroundAppearance::Blurred => {
+                                    gpui::WindowBackgroundAppearance::Blurred
+                                }
+                            };
 
                             let display = window
                                 .display(cx)
@@ -146,7 +173,10 @@ impl Render for OverviewPage {
                             let display_size = display.bounds().size;
                             let origin = Point::new(
                                 (display_size.width - window_width) / 2.0,
-                                Pixels::from(display_size.height.to_f64() - 180.0),
+                                Pixels::from(
+                                    display_size.height.to_f64()
+                                        - captions_config.padding_from_bottom as f64,
+                                ),
                             );
 
                             let caption_window_bounds =
@@ -162,20 +192,24 @@ impl Render for OverviewPage {
                                 is_resizable: false,
                                 is_minimizable: false,
                                 display_id: None,
-                                window_background: gpui::WindowBackgroundAppearance::Opaque,
+                                window_background,
                                 app_id: Some("subwin".to_owned()),
                                 window_min_size: None,
                                 window_decorations: None,
                                 tabbing_identifier: Some("subwin".to_owned()),
                             };
 
-                            cx.open_window(captions_window_options, |_, cx| {
-                                cx.new(|_| captions_root_view::CaptionsRootView)
+                            cx.open_window(captions_window_options, |_, _| {
+                                this.captions_window_view.clone()
                             })
                             .expect("failed to open captions window");
 
-                            // let bridge = cx.
-                        }),
+                            let bridge = cx.global::<BackendBridge>().clone();
+                            cx.spawn(async move |_, _| {
+                                bridge.start_transcription_request().await;
+                            })
+                            .detach();
+                        })),
                 ),
             )
     }

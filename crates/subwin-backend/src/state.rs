@@ -18,6 +18,8 @@ pub struct State {
     pub active_host: std::sync::Arc<cpal::Host>,
     /// Active CPAL audio device.
     pub active_audio_device: std::sync::Arc<Option<cpal::Device>>,
+
+    pub active_stream: Option<cpal::Stream>,
 }
 
 /// Thread-safe, async-friendly shared reference to the application [`State`].

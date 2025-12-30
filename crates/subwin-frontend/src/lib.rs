@@ -7,6 +7,7 @@ use subwin_bridge::MessageFromBackend;
 use tokio::sync::mpsc;
 
 use crate::entities::{
+    CaptionsEntity,
     audio_devices_entity::AudioDevicesEntity,
     download_entity::{DownloadEntity, DownloadProgressEvent},
     settings_entity::SettingsEntity,
@@ -52,6 +53,13 @@ impl BackendBridge {
             .await
             .expect("failed to select the audio device");
     }
+
+    pub async fn start_transcription_request(&self) {
+        self.to_backend
+            .send(subwin_bridge::MessageToBackend::StartTranscriptionRequest)
+            .await
+            .expect("failed to select the audio device");
+    }
 }
 
 impl Global for BackendBridge {}
@@ -68,11 +76,13 @@ pub fn run(
         let download = cx.new(DownloadEntity::new);
         let settings = cx.new(|_| SettingsEntity::default());
         let audio_devices = cx.new(|_| AudioDevicesEntity::default());
+        let captions = cx.new(|_| CaptionsEntity::default());
 
         let data = entities::DataEntities {
             settings,
             download,
             audio_devices,
+            captions,
         };
         let listener_data = data.clone();
 
@@ -87,7 +97,6 @@ pub fn run(
                 let window_handle = window.window_handle();
                 cx.spawn(async move |cx| {
                     while let Some(message) = rx.recv().await {
-                        println!("Got a message from backend: {message:?}");
                         match message {
                             MessageFromBackend::ConfigurationResponse(config) => {
                                 SettingsEntity::update(&listener_data.settings, config, cx)
@@ -138,6 +147,19 @@ pub fn run(
                             MessageFromBackend::AudioDevicesListResponse(audio_devices) => {
                                 let _ = listener_data.audio_devices.update(cx, |model, cx| {
                                     model.audio_devices = audio_devices;
+                                    cx.notify();
+                                });
+                            }
+                            MessageFromBackend::TranscriptionStartedResponse => {
+                                println!("Backend says that the transcription has been started.");
+                            }
+                            MessageFromBackend::TranscriptionStateUpdate {
+                                time_taken,
+                                new_segment_text,
+                            } => {
+                                let _ = listener_data.captions.update(cx, |model, cx| {
+                                    model.last_run_content = new_segment_text;
+                                    model.last_run_duration = time_taken;
                                     cx.notify();
                                 });
                             }

@@ -50,6 +50,10 @@ impl AppContext {
             MessageToBackend::SelectAudioDevice(id) => {
                 services::audio_service::handle_audio_device_selection(self.clone(), id).await;
             }
+            MessageToBackend::StartTranscriptionRequest => {
+                services::transcription_service::handle_start_transcription_request(self.clone())
+                    .await;
+            }
         }
     }
 
@@ -59,6 +63,13 @@ impl AppContext {
             .send(message)
             .await
             .expect("failed to send message to frontend");
+    }
+
+    /// Send message synchronously (blocking) to the frontend bridge.
+    pub fn send_blocking(&self, message: MessageFromBackend) {
+        self.tx
+            .blocking_send(message)
+            .expect("failed to blocking send message to frontend");
     }
 
     /// Send a notification message to the frontend bridge.
@@ -99,6 +110,7 @@ async fn setup_backend(rx: Receiver<MessageToBackend>, tx: Sender<MessageFromBac
         request_client,
         active_host,
         active_audio_device: Arc::new(active_audio_device),
+        active_stream: None,
     }));
 
     let context = Arc::new(AppContext { state, tx });
@@ -109,7 +121,7 @@ async fn setup_backend(rx: Receiver<MessageToBackend>, tx: Sender<MessageFromBac
 pub fn run(rx: Receiver<MessageToBackend>, tx: Sender<MessageFromBackend>) {
     thread::spawn(move || {
         // TODO: use multi-threaded runtime?
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
             .expect("failed to build tokio runtime");
